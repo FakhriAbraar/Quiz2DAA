@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NetGraph — Simulasi Algoritma Graf</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-left">
+      <div class="logo">NetGraph</div>
+      <div class="tagline">Simulasi Jaringan Kabel ISP · Graph Algorithm Visualizer</div>
+    </div>
+    <div class="header-stats">
+      <div class="hstat"><span id="hs-nodes">0</span><label>Nodes</label></div>
+      <div class="hstat"><span id="hs-edges">0</span><label>Total Edge</label></div>
+    </div>
+  </header>
+
+  <!-- MAIN LAYOUT -->
+  <main>
+
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar">
+
+      <!-- Panel 1: Tambah Node -->
+      <section class="panel">
+        <h2 class="panel-title">1 · Tambah Node</h2>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="click">Klik Canvas</button>
+          <button class="tab" data-tab="random">Random</button>
+          <button class="tab" data-tab="manual">Manual</button>
+        </div>
+
+        <div class="tab-content active" id="tab-click">
+          <p class="hint">Klik di canvas untuk menambah rumah. Node pertama otomatis jadi ISP Center.</p>
+          <button class="btn btn-outline" id="btn-set-isp">📡 Klik Ulang ISP Center</button>
+        </div>
+
+        <div class="tab-content" id="tab-random">
+          <p class="hint">Generate rumah secara acak.</p>
+          <div class="row-btns">
+            <button class="btn btn-outline" onclick="generateRandom(5)">+5</button>
+            <button class="btn btn-outline" onclick="generateRandom(10)">+10</button>
+            <button class="btn btn-outline" onclick="generateRandom(20)">+20</button>
+            <button class="btn btn-outline" onclick="generateRandom(50)">+50</button>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-manual">
+          <p class="hint">Masukkan koordinat manual (dalam satuan meter).</p>
+          <div class="input-pair">
+            <input type="number" id="inp-x" placeholder="X" />
+            <input type="number" id="inp-y" placeholder="Y" />
+          </div>
+          <button class="btn btn-primary" onclick="addManual()">+ Tambah</button>
+        </div>
+
+        <div class="divider"></div>
+        <button class="btn btn-danger" onclick="clearAll()">🗑 Hapus Semua</button>
+      </section>
+
+      <!-- Panel 2: Jalankan Algoritma -->
+      <section class="panel">
+        <h2 class="panel-title">2 · Jalankan Algoritma</h2>
+
+        <div class="algo-cards">
+          <button class="algo-card green" id="btn-kruskal" onclick="runAlgo('kruskal')">
+            <span class="algo-icon">🌿</span>
+            <span class="algo-name">Kruskal</span>
+            <span class="algo-sub">MST · Union-Find</span>
+          </button>
+          <button class="algo-card blue" id="btn-prim" onclick="runAlgo('prim')">
+            <span class="algo-icon">💧</span>
+            <span class="algo-name">Prim</span>
+            <span class="algo-sub">MST · Min-Heap</span>
+          </button>
+          <button class="algo-card red" id="btn-dijkstra" onclick="runAlgo('dijkstra')">
+            <span class="algo-icon">🔴</span>
+            <span class="algo-name">Dijkstra</span>
+            <span class="algo-sub">Shortest Path</span>
+          </button>
+        </div>
+
+        <button class="btn btn-primary full" onclick="runAll()">▶ Jalankan Semua</button>
+
+        <div class="field-group">
+          <label class="field-label">Dijkstra — Target Node</label>
+          <select id="dijkstra-target">
+            <option value="-1">Auto (node terjauh)</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Panel 3: Hasil & Benchmark -->
+      <section class="panel">
+        <h2 class="panel-title">3 · Hasil & Benchmark</h2>
+        <table class="result-table">
+          <thead>
+            <tr><th></th><th>Algoritma</th><th>Panjang (m)</th><th>Edge</th><th>Waktu (ms)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="dot green"></span></td>
+              <td>Kruskal</td>
+              <td id="r-klen">—</td>
+              <td id="r-kedge">—</td>
+              <td id="r-ktime">—</td>
+            </tr>
+            <tr>
+              <td><span class="dot blue"></span></td>
+              <td>Prim</td>
+              <td id="r-plen">—</td>
+              <td id="r-pedge">—</td>
+              <td id="r-ptime">—</td>
+            </tr>
+            <tr>
+              <td><span class="dot red"></span></td>
+              <td>Dijkstra</td>
+              <td id="r-dlen">—</td>
+              <td id="r-dedge">—</td>
+              <td id="r-dtime">—</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="complexity-list">
+          <div class="cx-row"><span>Kruskal</span><code>O(E log E)</code></div>
+          <div class="cx-row"><span>Prim</span><code>O(E log V)</code></div>
+          <div class="cx-row"><span>Dijkstra</span><code>O(E log V)</code></div>
+        </div>
+      </section>
+
+      <!-- Panel 4: Tampilkan Layer -->
+      <section class="panel">
+        <h2 class="panel-title">4 · Toggle Layer</h2>
+        <div class="toggle-list">
+          <label class="toggle-item">
+            <input type="checkbox" id="layer-alledge" checked onchange="redraw()" />
+            <span class="toggle-dot gray"></span> Semua Edge (abu)
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" id="layer-kruskal" checked onchange="redraw()" />
+            <span class="toggle-dot green"></span> Kruskal MST
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" id="layer-prim" checked onchange="redraw()" />
+            <span class="toggle-dot blue"></span> Prim MST
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" id="layer-dijkstra" checked onchange="redraw()" />
+            <span class="toggle-dot red"></span> Dijkstra Path
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" id="layer-weights" checked onchange="redraw()" />
+            <span class="toggle-dot gray"></span> Label Bobot
+          </label>
+        </div>
+      </section>
+
+    </aside>
+
+    <!-- CANVAS AREA -->
+    <div class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+
+      <!-- Legend overlay -->
+      <div class="legend-overlay">
+        <div class="legend-item"><span class="leg-dot" style="background:#F59E0B"></span> ISP Center</div>
+        <div class="legend-item"><span class="leg-dot" style="background:#a78bfa"></span> Rumah</div>
+        <div class="legend-item"><span class="leg-line" style="background:#22c55e"></span> Kruskal MST</div>
+        <div class="legend-item"><span class="leg-line" style="background:#38bdf8"></span> Prim MST</div>
+        <div class="legend-item"><span class="leg-line" style="background:#f87171"></span> Dijkstra</div>
+      </div>
+
+      <!-- Canvas controls -->
+      <div class="canvas-controls">
+        <button class="ctrl-btn" onclick="zoomIn()" title="Zoom In">＋</button>
+        <button class="ctrl-btn" onclick="zoomOut()" title="Zoom Out">－</button>
+        <button class="ctrl-btn" onclick="resetView()" title="Reset View">⊡</button>
+      </div>
+
+      <!-- Mode indicator -->
+      <div class="mode-bar" id="mode-bar">Mode: Klik canvas untuk tambah node</div>
+    </div>
+
+  </main>
+
+  <script src="graph.js"></script>
+  <script src="algorithms.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
