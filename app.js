@@ -31,6 +31,19 @@ let hoveredEdge  = null;
 let draggingNode = -1;
 let wasDragging  = false;
 
+// Obstacle
+let addingObstacle = false;
+let drawingObstacle = false;    
+let obsCenter = { x: 0, y: 0 };
+let obsRadius = 0;              
+let draggingObstacle = -1;
+
+// Animation State
+let isAnimating = false;
+let animNode = -1;
+let animEdge = null;
+let animType = ''; 
+
 // ============================================================
 //  i18n — Teks bilingual (Indonesia / English)
 // ============================================================
@@ -189,6 +202,58 @@ function toCanvas(wx, wy) {
 }
 
 // ============================================================
+//  DRAW OBSTACLES— Render halangan
+// ============================================================
+
+function drawObstacles() {
+  for (const obs of graph.obstacles) {
+    const { x, y } = toCanvas(obs.x, obs.y);
+    const r = obs.radius * zoom;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.fillStyle = isLight() ? 'rgba(248, 113, 113, 0.15)' : 'rgba(248, 113, 113, 0.12)';
+    ctx.fill();
+    
+    ctx.strokeStyle = 'rgba(248, 113, 113, 0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(248, 113, 113, 0.8)';
+    ctx.font = `600 ${10 * Math.max(0.7, zoom)}px Syne, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`Rintangan (x${obs.penaltyFactor})`, x, y);
+    ctx.restore();
+  }
+
+  // --- RENDER PREVIEW RINTANGAN YANG SEDANG DITARIK ---
+  if (drawingObstacle) {
+    const { x, y } = toCanvas(obsCenter.x, obsCenter.y);
+    const r = obsRadius * zoom;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgba(248, 113, 113, 0.25)'; 
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(248, 113, 113, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(248, 113, 113, 1)';
+    ctx.font = `700 ${12 * Math.max(0.7, zoom)}px Syne, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${obsRadius.toFixed(0)}m`, x, y);
+    ctx.restore();
+  }
+}
+
+// ============================================================
 //  DRAW — Render seluruh canvas
 // ============================================================
 function draw() {
@@ -198,6 +263,8 @@ function draw() {
 
   // Background grid
   drawGrid();
+
+  drawObstacles();
 
   if (graph.nodeCount === 0) {
     drawEmptyHint();
@@ -320,6 +387,27 @@ function draw() {
     ctx.setLineDash([4, 3]);
     ctx.stroke();
     ctx.restore();
+  }
+
+  // --- RENDER HIGHLIGHT ANIMASI ---
+  if (isAnimating) {
+    if (animEdge) {
+      const color = animType === 'eval' ? '#eab308' : (animType === 'add' ? '#22c55e' : '#f87171');
+      drawEdge(animEdge, color, 4.5, []);
+      drawWeightLabel(animEdge, color);
+    }
+
+    if (animNode >= 0) {
+      const nd = graph.nodes[animNode];
+      const { x, y } = toCanvas(nd.x, nd.y);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, 16 * Math.max(0.5, zoom), 0, Math.PI * 2);
+      ctx.strokeStyle = '#eab308'; // Kuning
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   updateHints();
@@ -470,6 +558,7 @@ function isLayerOn(name) {
 canvas.addEventListener('click', e => {
   if (wasDragging) { wasDragging = false; return; }
   if (isPanning) return;
+  if (addingObstacle) return;
   const rect = canvas.getBoundingClientRect();
   const cx   = e.clientX - rect.left;
   const cy   = e.clientY - rect.top;
@@ -535,6 +624,42 @@ canvas.addEventListener('mousedown', e => {
       canvas.style.cursor = 'grabbing';
     }
   }
+
+  if (addingObstacle && e.button === 0) {
+    drawingObstacle = true;
+    obsCenter = { x, y };
+    obsRadius = 0;
+    return;
+  }
+
+  if (e.button === 0 && !settingISP && !addingObstacle) {
+
+    let nearestNode = -1, minDNode = 22 / zoom;
+    for (let i = 0; i < graph.nodeCount; i++) {
+      const d = Math.hypot(x - graph.nodes[i].x, y - graph.nodes[i].y);
+      if (d < minDNode) { minDNode = d; nearestNode = i; }
+    }
+    if (nearestNode >= 0) {
+      draggingNode = nearestNode;
+      canvas.style.cursor = 'grabbing';
+      return;
+    }
+
+    let clickedObs = -1;
+    for (let i = graph.obstacles.length - 1; i >= 0; i--) {
+      const obs = graph.obstacles[i];
+      if (Math.hypot(x - obs.x, y - obs.y) <= obs.radius) {
+        clickedObs = i;
+        break;
+      }
+    }
+    if (clickedObs >= 0) {
+      draggingObstacle = clickedObs;
+      canvas.style.cursor = 'grabbing';
+      return;
+    }
+  }
+
 });
 
 canvas.addEventListener('mousemove', e => {
@@ -615,6 +740,36 @@ canvas.addEventListener('mousemove', e => {
     updateTooltip(false);
   }
 
+  if (drawingObstacle) {
+    obsRadius = Math.hypot(x - obsCenter.x, y - obsCenter.y);
+    draw();
+    return;
+  }
+
+  if (draggingNode >= 0) {
+    wasDragging = true;
+    const { x, y } = toWorld(cx, cy);
+    graph.nodes[draggingNode].x = x;
+    graph.nodes[draggingNode].y = y;
+    graph._rebuildEdges();
+    rerunActiveAlgos();
+    updateTooltip(false);
+    draw();
+    return;
+  }
+
+  if (draggingObstacle >= 0) {
+    wasDragging = true;
+    const { x, y } = toWorld(cx, cy);
+    graph.obstacles[draggingObstacle].x = x;
+    graph.obstacles[draggingObstacle].y = y;
+
+    graph._rebuildEdges();
+    rerunActiveAlgos(); 
+    draw();
+    return;
+  }
+
   if (changed) draw();
 });
 
@@ -627,12 +782,33 @@ canvas.addEventListener('mouseup', () => {
   }
   isPanning = false;
   canvas.style.cursor = settingISP ? 'cell' : 'crosshair';
+
+  if (drawingObstacle) {
+    drawingObstacle = false;
+    if (obsRadius > 10) { 
+      graph.obstacles.push(new Obstacle(obsCenter.x, obsCenter.y, obsRadius, 2.5));
+      graph._rebuildEdges();
+      rerunActiveAlgos();
+      showModeBar('Rintangan ditambahkan. Drag lagi untuk membuat yang baru.');
+    }
+  }
+
+  if (draggingObstacle >= 0) {
+    draggingObstacle = -1;
+    canvas.style.cursor = 'crosshair';
+    return;
+  }
+
+  draw();
+    return;
+
 });
 
 canvas.addEventListener('mouseleave', () => {
   isPanning    = false;
   draggingNode = -1;
   hoveredNode  = -1;
+  draggingObstacle = -1;
   hoveredEdge  = null;
   updateTooltip(false);
   draw();
@@ -660,6 +836,8 @@ canvas.addEventListener('contextmenu', e => {
     draw();
     showModeBar(t('mode.deleted', label));
   }
+
+  
 });
 
 // Scroll to zoom
@@ -753,60 +931,114 @@ function clearAll() {
 // ============================================================
 //  ALGORITMA
 // ============================================================
-function runAlgo(name) {
-  if (graph.nodeCount < 2) {
-    showModeBar(t('mode.minNodes'));
-    return;
-  }
+// ============================================================
+//  ALGORITMA (Sekarang berjalan secara Async untuk Animasi)
+// ============================================================
+async function runAlgo(name, isDragEvent = false) {
+  if (graph.nodeCount < 2) { showModeBar(t('mode.minNodes')); return; }
+  
+  // Cegah spam klik saat sedang animasi
+  if (isAnimating && !isDragEvent) return; 
 
   const start = ispIndex >= 0 ? ispIndex : 0;
+  
+  // Ambil pengaturan animasi dari UI
+  const chkAnim = document.getElementById('chk-anim');
+  const speedInput = document.getElementById('inp-speed');
+  const doAnim = chkAnim && chkAnim.checked && !isDragEvent; // Jangan animasi jika user sedang drag node/rintangan
+  const delayMs = doAnim ? parseInt(speedInput.value) : 0;
+
+  if (doAnim) {
+    isAnimating = true;
+    animNode = -1; animEdge = null;
+    showModeBar(`Menjalankan ${name.toUpperCase()}...`);
+    draw();
+  }
+
+  // Fungsi Callback yang dipanggil setiap kali algoritma melangkah 1 step
+  const onStep = async (step) => {
+    if (step.type === 'done') return;
+    animNode = step.node !== undefined ? step.node : -1;
+    animEdge = step.edge || null;
+    animType = step.type || '';
+    draw(); // Render kanvas dengan status terbaru
+  };
 
   if (name === 'kruskal') {
-    kruskalRes = kruskal(graph);
+    if (doAnim) kruskalRes = null;
+    kruskalRes = await kruskal(graph, delayMs, onStep);
     updateResultRow('k', kruskalRes);
     document.getElementById('btn-kruskal').classList.add('active');
+    
   } else if (name === 'prim') {
-    primRes = prim(graph, start);
+    if (doAnim) primRes = null;
+    primRes = await prim(graph, start, delayMs, onStep);
     updateResultRow('p', primRes);
     document.getElementById('btn-prim').classList.add('active');
+    
   } else if (name === 'dijkstra') {
     const tgt = parseInt(document.getElementById('dijkstra-target').value);
-
-    // Dijkstra berjalan di atas jaringan MST (bukan complete graph)
-    // agar menghasilkan rute multi-hop yang informatif
     let mstEdges = null;
     if (kruskalRes) mstEdges = kruskalRes.edges;
     else if (primRes) mstEdges = primRes.edges;
     else {
-      // Auto-run Prim jika belum ada MST
-      primRes = prim(graph, start);
+      primRes = await prim(graph, start, 0); // Generate instan tanpa animasi
       updateResultRow('p', primRes);
       document.getElementById('btn-prim').classList.add('active');
       mstEdges = primRes.edges;
-      showModeBar(t('mode.primAuto'));
     }
-
-    dijkstraRes = dijkstraOnMST(mstEdges, graph.nodes, start, tgt);
+    
+    if (doAnim) dijkstraRes = null;
+    dijkstraRes = await dijkstraOnMST(mstEdges, graph.nodes, start, tgt, delayMs, onStep);
     updateResultRow('d', dijkstraRes);
     document.getElementById('btn-dijkstra').classList.add('active');
     updateDijkstraPath(dijkstraRes.path);
   }
 
-  draw();
+  if (doAnim) {
+    isAnimating = false;
+    animNode = -1; animEdge = null;
+    showModeBar('Selesai.');
+    draw();
+  }
 }
 
-function runAll() {
-  if (graph.nodeCount < 2) {
-    showModeBar(t('mode.minNodes'));
-    return;
-  }
-  runAlgo('kruskal');
-  runAlgo('prim');
-  runAlgo('dijkstra');
+async function runAll() {
+  if (graph.nodeCount < 2) return;
+  if (isAnimating) return;
+  await runAlgo('kruskal');
+  await runAlgo('prim');
+  await runAlgo('dijkstra');
+}
+
+function updateAllCosts() {
+  if (kruskalRes)  updateResultRow('k', kruskalRes);
+  if (primRes)     updateResultRow('p', primRes);
+  if (dijkstraRes) updateResultRow('d', dijkstraRes);
 }
 
 function updateResultRow(prefix, result) {
-  document.getElementById(`r-${prefix}len`).textContent  = result.totalWeight.toFixed(1) + 'm';
+  const lengthMeters = result.totalWeight;
+  
+  const costInput = document.getElementById('inp-cost-meter');
+  const costPerMeter = costInput ? (parseFloat(costInput.value) || 0) : 25000; // Default 25rb jika input belum ada di html
+  
+  const estimatedCost = lengthMeters * costPerMeter;
+  
+  const formatter = new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  });
+
+  if (lengthMeters === 0) {
+    document.getElementById(`r-${prefix}len`).innerHTML = '0m<br><small style="color:var(--text3)">Rp 0</small>';
+  } else {
+    document.getElementById(`r-${prefix}len`).innerHTML = 
+      `${lengthMeters.toFixed(1)}m<br><small style="color:var(--orange); font-weight:600;">${formatter.format(estimatedCost)}</small>`;
+  }
+
   document.getElementById(`r-${prefix}time`).textContent = result.timeMs.toFixed(3);
   document.getElementById(`r-${prefix}edge`).textContent = result.edges.length;
 }
@@ -915,15 +1147,16 @@ function deleteNode(index) {
 }
 
 // Jalankan ulang algoritma aktif setelah drag
-function rerunActiveAlgos() {
+async function rerunActiveAlgos() {
   const start = ispIndex >= 0 ? ispIndex : 0;
-  if (kruskalRes)  { kruskalRes  = kruskal(graph);        updateResultRow('k', kruskalRes); }
-  if (primRes)     { primRes     = prim(graph, start);    updateResultRow('p', primRes); }
+  // Parameter isDragEvent = true (dan delay = 0) agar tidak ada animasi
+  if (kruskalRes)  { kruskalRes  = await kruskal(graph, 0);        updateResultRow('k', kruskalRes); }
+  if (primRes)     { primRes     = await prim(graph, start, 0);    updateResultRow('p', primRes); }
   if (dijkstraRes) {
     const mstEdges = kruskalRes ? kruskalRes.edges : (primRes ? primRes.edges : null);
     if (mstEdges) {
       const prevTarget = dijkstraRes.target;
-      dijkstraRes = dijkstraOnMST(mstEdges, graph.nodes, start, prevTarget);
+      dijkstraRes = await dijkstraOnMST(mstEdges, graph.nodes, start, prevTarget, 0);
       updateResultRow('d', dijkstraRes);
       updateDijkstraPath(dijkstraRes.path);
     }
@@ -967,6 +1200,31 @@ document.getElementById('btn-set-isp').addEventListener('click', () => {
     btn.textContent = t('btn.setISP');
     canvas.style.cursor = 'crosshair';
     showModeBar(t('mode.cancelISP'));
+  }
+});
+
+// ============================================================
+//  ADD OBSTACLE BUTTON
+// ============================================================
+document.getElementById('btn-add-obs').addEventListener('click', () => {
+  addingObstacle = !addingObstacle;
+  const btn = document.getElementById('btn-add-obs');
+
+  if (addingObstacle) {
+    settingISP = false; // Matikan mode ISP jika sedang aktif
+    document.getElementById('btn-set-isp').textContent = '📡 Set ISP';
+    
+    btn.textContent = '✕ Batal Rintangan';
+    btn.classList.add('btn-danger'); // Berubah merah
+    btn.classList.remove('btn-outline');
+    canvas.style.cursor = 'crosshair';
+    showModeBar('Klik canvas untuk menempatkan rintangan...');
+  } else {
+    btn.textContent = '🛑 + Rintangan';
+    btn.classList.remove('btn-danger');
+    btn.classList.add('btn-outline');
+    canvas.style.cursor = 'crosshair';
+    showModeBar('Mode normal.');
   }
 });
 
