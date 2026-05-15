@@ -69,6 +69,14 @@
 
         <div class="divider"></div>
         <button class="btn btn-danger" onclick="clearAll()" data-i18n="btn.clearAll">🗑 Hapus Semua</button>
+        <div class="divider"></div>
+        <div class="row-btns" style="margin-top: 10px;">
+          <button class="btn btn-outline" onclick="exportTopology()" style="flex: 1;">💾 Simpan (Export)</button>
+          <label class="btn btn-outline" style="flex: 1; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+            📂 Muat (Import)
+            <input type="file" id="inp-import" accept=".json" onchange="importTopology(event)" style="display: none;" />
+          </label>
+        </div>
       </section>
 
       <!-- Panel 2: Jalankan Algoritma -->

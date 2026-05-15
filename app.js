@@ -1229,6 +1229,90 @@ document.getElementById('btn-add-obs').addEventListener('click', () => {
 });
 
 // ============================================================
+//  EXPORT & IMPORT TOPOLOGY (JSON)
+// ============================================================
+
+/** Mengambil seluruh state graf dan mengunduhnya sebagai file .json */
+function exportTopology() {
+  if (graph.nodeCount === 0 && graph.obstacles.length === 0) {
+    alert("Graf masih kosong!");
+    return;
+  }
+
+  const data = {
+    metadata: {
+      appName: "NetGraph",
+      version: "1.0",
+      exportDate: new Date().toISOString()
+    },
+    ispIndex: ispIndex,
+    costPerMeter: parseFloat(document.getElementById('inp-cost-meter').value) || 25000,
+    nodes: graph.nodes.map(n => ({ id: n.id, x: n.x, y: n.y })),
+    obstacles: graph.obstacles.map(o => ({ x: o.x, y: o.y, radius: o.radius, penaltyFactor: o.penaltyFactor }))
+  };
+
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+  const dlAnchorElem = document.createElement('a');
+  dlAnchorElem.setAttribute("href", dataStr);
+  dlAnchorElem.setAttribute("download", `netgraph_topologi_${new Date().getTime()}.json`);
+  dlAnchorElem.click();
+  
+  showModeBar("Topologi berhasil diekspor ke file JSON.");
+}
+
+/** Membaca file .json dan memulihkan state graf */
+function importTopology(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      
+      if (!data.nodes) throw new Error("Format file tidak dikenali.");
+
+      clearAll();
+
+      data.nodes.forEach(n => graph.addNode(n.x, n.y));
+      
+      ispIndex = data.ispIndex;
+
+      if (data.costPerMeter) {
+        document.getElementById('inp-cost-meter').value = data.costPerMeter;
+      }
+
+      if (data.obstacles) {
+        data.obstacles.forEach(o => {
+          graph.obstacles.push(new Obstacle(o.x, o.y, o.radius, o.penaltyFactor));
+        });
+      }
+
+      graph._rebuildEdges();
+      updateDijkstraSelect();
+      updateHeaderStats();
+      updateAllCosts();
+
+      if (graph.nodeCount >= 2) {
+        await rerunActiveAlgos();
+      }
+
+      fitToScreen();
+      
+      showModeBar("Topologi berhasil dimuat!");
+      draw();
+
+      event.target.value = "";
+
+    } catch (err) {
+      console.error(err);
+      alert("Gagal memuat file: " + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ============================================================
 //  LAYER CHECKBOXES — redraw on change
 // ============================================================
 function redraw() { draw(); }
