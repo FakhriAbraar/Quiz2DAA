@@ -256,3 +256,95 @@ function dijkstra(graph, srcIndex, targetIndex = -1) {
     allDist     : dist,
   };
 }
+
+// ============================================================
+//  4. DIJKSTRA ON MST — Shortest path through cable network
+//
+//  Kompleksitas: O(E log V) dengan Min-Heap
+//
+//  Cara kerja:
+//  - Bangun adjacency list dari MST edges (jaringan kabel terpasang)
+//  - Jalankan Dijkstra pada sparse graph ini, bukan complete graph
+//  - Menghasilkan rute multi-hop yang realistis (ISP→H2→H5→H9)
+//  - Dibanding Dijkstra di complete graph (selalu 1-hop karena
+//    triangle inequality Euclidean), ini jauh lebih informatif
+// ============================================================
+function dijkstraOnMST(mstEdges, nodes, srcIndex, targetIndex = -1) {
+  const t0 = performance.now();
+  const n  = nodes.length;
+
+  // Bangun adjacency list dari MST edges (undirected)
+  const adj = Array.from({ length: n }, () => []);
+  for (const e of mstEdges) {
+    adj[e.u].push({ v: e.v, w: e.weight });
+    adj[e.v].push({ v: e.u, w: e.weight });
+  }
+
+  const dist = new Array(n).fill(Infinity);
+  const prev = new Array(n).fill(-1);
+  const vis  = new Array(n).fill(false);
+
+  dist[srcIndex] = 0;
+  const heap = new MinHeap();
+  heap.push({ key: 0, v: srcIndex });
+
+  while (heap.size > 0) {
+    const { v: u } = heap.pop();
+    if (vis[u]) continue;
+    vis[u] = true;
+
+    for (const { v, w } of adj[u]) {
+      if (!vis[v]) {
+        const newD = dist[u] + w;
+        if (newD < dist[v]) {
+          dist[v] = newD;
+          prev[v] = u;
+          heap.push({ key: newD, v });
+        }
+      }
+    }
+  }
+
+  // Auto-target: node terjauh yang bisa dicapai lewat MST
+  let target = targetIndex;
+  if (target < 0 || target === srcIndex || target >= n || dist[target] === Infinity) {
+    target = -1;
+    let maxD = -1;
+    for (let i = 0; i < n; i++) {
+      if (i !== srcIndex && dist[i] !== Infinity && dist[i] > maxD) {
+        maxD = dist[i];
+        target = i;
+      }
+    }
+    if (target < 0) target = srcIndex;
+  }
+
+  // Rekonstruksi path
+  const path = [];
+  let cur = target;
+  while (cur !== -1) {
+    path.unshift(cur);
+    cur = prev[cur];
+  }
+
+  // Buat edges dari path menggunakan bobot MST
+  const pathEdges = [];
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i], b = path[i + 1];
+    const mstEdge = mstEdges.find(e =>
+      (e.u === a && e.v === b) || (e.u === b && e.v === a)
+    );
+    const w = mstEdge ? mstEdge.weight : Graph.euclidean(nodes[a], nodes[b]);
+    pathEdges.push(new Edge(a, b, w));
+  }
+
+  return {
+    edges       : pathEdges,
+    totalWeight : dist[target] === Infinity ? 0 : dist[target],
+    timeMs      : performance.now() - t0,
+    algorithm   : 'Dijkstra',
+    path,
+    target,
+    allDist     : dist,
+  };
+}

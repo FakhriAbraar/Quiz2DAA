@@ -25,6 +25,143 @@ let isPanning = false, panStart = { x: 0, y: 0 };
 // Mode input
 let settingISP = false;
 
+// Hover, drag, delete
+let hoveredNode  = -1;
+let hoveredEdge  = null;
+let draggingNode = -1;
+let wasDragging  = false;
+
+// ============================================================
+//  i18n — Teks bilingual (Indonesia / English)
+// ============================================================
+const LANG = {
+  id: {
+    tagline: 'Simulasi Jaringan Kabel ISP · Graph Algorithm Visualizer',
+    'stat.nodes': 'Nodes', 'stat.edges': 'Total Edge',
+    'panel.addNode': '1 · Tambah Node', 'panel.runAlgo': '2 · Jalankan Algoritma',
+    'panel.results': '3 · Hasil & Benchmark', 'panel.layers': '4 · Toggle Layer',
+    'tab.click': 'Klik Canvas', 'tab.random': 'Random', 'tab.manual': 'Manual',
+    'hint.click':    'Klik canvas untuk menambah rumah. <strong>Drag node</strong> untuk pindahkan posisi. <strong>Klik-kanan node</strong> untuk hapus.',
+    'hint.random':   'Generate rumah secara acak.',
+    'hint.manual':   'Masukkan koordinat manual (dalam satuan meter).',
+    'hint.dijkstra': 'Dijkstra berjalan di atas jaringan MST — mensimulasikan routing melalui kabel yang sudah terpasang.',
+    'btn.add': '+ Tambah', 'btn.clearAll': '🗑 Hapus Semua', 'btn.runAll': '▶ Jalankan Semua',
+    'btn.setISP': '📡 Klik Ulang ISP Center', 'btn.cancelISP': '✕ Batal Set ISP',
+    'label.dijkstraTarget': 'Dijkstra — Target Node', 'label.dijkstraPath': 'Dijkstra — Rute Jalur',
+    'th.algorithm': 'Algoritma', 'th.length': 'Panjang (m)', 'th.edges': 'Edge', 'th.time': 'Waktu (ms)',
+    'layer.allEdge': 'Semua Edge (abu)', 'layer.weights': 'Label Bobot',
+    'legend.house': 'Rumah', 'algo.dijkstraSub': 'Shortest Path',
+    'select.auto': 'Auto (node terjauh)',
+    'select.node': (id, x, y) => `Node H${id}  (${x}, ${y})`,
+    'mode.init':      'Klik canvas untuk menambah node rumah, atau gunakan tombol Random.',
+    'mode.cleared':   'Canvas dikosongkan.',
+    'mode.setISP':    'Klik node yang ingin dijadikan ISP Center...',
+    'mode.cancelISP': 'Mode normal.',
+    'mode.primAuto':  'Prim otomatis dijalankan sebagai jaringan kabel untuk Dijkstra.',
+    'mode.minNodes':  '⚠ Perlu minimal 2 node!',
+    'mode.nodeAdded':  (id, x, y)  => `Node H${id} ditambahkan (${x}, ${y})`,
+    'mode.nodeManual': (id, x, y)  => `Node H${id} ditambahkan manual (${x}, ${y})`,
+    'mode.random':     (n, total)  => `${n} node ditambahkan. Total: ${total}`,
+    'mode.ispMoved':   (id)        => `ISP Center dipindahkan ke Node ${id}`,
+    'mode.ispNew':     (id)        => `ISP Center baru ditambahkan sebagai Node ${id}`,
+    'mode.deleted':    (label)     => `Node ${label} dihapus.`,
+    'canvas.hint1': 'Klik di sini untuk menambah node rumah',
+    'canvas.hint2': 'atau gunakan tombol Random di sidebar',
+    'tip.hint': 'drag pindahkan · klik-kanan hapus',
+    'tip.ispDist': 'ISP→node:',
+    'tip.edge': 'Edge',
+  },
+  en: {
+    tagline: 'ISP Cable Network Simulation · Graph Algorithm Visualizer',
+    'stat.nodes': 'Nodes', 'stat.edges': 'Total Edges',
+    'panel.addNode': '1 · Add Node', 'panel.runAlgo': '2 · Run Algorithm',
+    'panel.results': '3 · Results & Benchmark', 'panel.layers': '4 · Toggle Layers',
+    'tab.click': 'Click Canvas', 'tab.random': 'Random', 'tab.manual': 'Manual',
+    'hint.click':    'Click canvas to add a house. <strong>Drag nodes</strong> to reposition. <strong>Right-click node</strong> to delete.',
+    'hint.random':   'Generate houses randomly.',
+    'hint.manual':   'Enter coordinates manually (in meters).',
+    'hint.dijkstra': 'Dijkstra runs on the MST network — simulating routing through installed cables.',
+    'btn.add': '+ Add', 'btn.clearAll': '🗑 Clear All', 'btn.runAll': '▶ Run All',
+    'btn.setISP': '📡 Reset ISP Center', 'btn.cancelISP': '✕ Cancel ISP',
+    'label.dijkstraTarget': 'Dijkstra — Target Node', 'label.dijkstraPath': 'Dijkstra — Path Route',
+    'th.algorithm': 'Algorithm', 'th.length': 'Length (m)', 'th.edges': 'Edges', 'th.time': 'Time (ms)',
+    'layer.allEdge': 'All Edges (gray)', 'layer.weights': 'Weight Labels',
+    'legend.house': 'House', 'algo.dijkstraSub': 'Shortest Path',
+    'select.auto': 'Auto (farthest node)',
+    'select.node': (id, x, y) => `Node H${id}  (${x}, ${y})`,
+    'mode.init':      'Click canvas to add house nodes, or use the Random button.',
+    'mode.cleared':   'Canvas cleared.',
+    'mode.setISP':    'Click a node to set as ISP Center...',
+    'mode.cancelISP': 'Normal mode.',
+    'mode.primAuto':  'Prim auto-run as cable network for Dijkstra.',
+    'mode.minNodes':  '⚠ Need at least 2 nodes!',
+    'mode.nodeAdded':  (id, x, y)  => `Node H${id} added (${x}, ${y})`,
+    'mode.nodeManual': (id, x, y)  => `Node H${id} added manually (${x}, ${y})`,
+    'mode.random':     (n, total)  => `${n} nodes added. Total: ${total}`,
+    'mode.ispMoved':   (id)        => `ISP Center moved to Node ${id}`,
+    'mode.ispNew':     (id)        => `New ISP Center added as Node ${id}`,
+    'mode.deleted':    (label)     => `Node ${label} deleted.`,
+    'canvas.hint1': 'Click here to add house nodes',
+    'canvas.hint2': 'or use the Random button in the sidebar',
+    'tip.hint': 'drag to move · right-click to delete',
+    'tip.ispDist': 'ISP→node:',
+    'tip.edge': 'Edge',
+  },
+};
+
+let currentLang  = localStorage.getItem('ng-lang')  || 'id';
+let currentTheme = localStorage.getItem('ng-theme') || 'dark';
+
+/** Translate key, optional template args */
+function t(key, ...args) {
+  const val = LANG[currentLang]?.[key] ?? LANG.id[key] ?? key;
+  return typeof val === 'function' ? val(...args) : val;
+}
+/** True if currently in light mode */
+function isLight() { return currentTheme === 'light'; }
+
+/** Apply theme to DOM + redraw */
+function applyTheme() {
+  document.body.classList.toggle('light', isLight());
+  const btn = document.getElementById('btn-theme');
+  if (btn) btn.textContent = isLight() ? '🌙' : '☀️';
+}
+function toggleTheme() {
+  currentTheme = isLight() ? 'dark' : 'light';
+  localStorage.setItem('ng-theme', currentTheme);
+  applyTheme();
+  draw();
+}
+
+/** Apply language to all data-i18n elements */
+function applyLang() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-html]').forEach(el => {
+    el.innerHTML = t(el.dataset.i18nHtml);
+  });
+  // ISP button (dynamic state, update only if not in "cancel" mode)
+  if (!settingISP) {
+    const ispBtn = document.getElementById('btn-set-isp');
+    if (ispBtn) ispBtn.textContent = t('btn.setISP');
+  }
+  // Dijkstra select first option
+  const sel = document.getElementById('dijkstra-target');
+  if (sel && sel.options[0]) sel.options[0].textContent = t('select.auto');
+  // Lang toggle button
+  const langBtn = document.getElementById('btn-lang');
+  if (langBtn) langBtn.textContent = currentLang === 'id' ? 'EN' : 'ID';
+  // Mode bar & canvas hints
+  showModeBar(t('mode.init'));
+  draw();
+}
+function toggleLang() {
+  currentLang = currentLang === 'id' ? 'en' : 'id';
+  localStorage.setItem('ng-lang', currentLang);
+  applyLang();
+}
+
 // ============================================================
 //  CANVAS SETUP
 // ============================================================
@@ -55,7 +192,9 @@ function toCanvas(wx, wy) {
 //  DRAW — Render seluruh canvas
 // ============================================================
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Background fill (theme-aware)
+  ctx.fillStyle = isLight() ? '#f0f2f5' : '#0d1117';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // Background grid
   drawGrid();
@@ -65,9 +204,10 @@ function draw() {
     return;
   }
 
-  // Layer: semua edge (abu-abu tipis)
+  // Layer: semua edge (abu-abu tipis, theme-aware)
+  const allEdgeColor = isLight() ? 'rgba(0,0,0,0.09)' : 'rgba(255,255,255,0.06)';
   if (isLayerOn('alledge') && graph.nodeCount <= 40) {
-    for (const e of graph.edges) drawEdge(e, 'rgba(255,255,255,0.06)', 0.8, []);
+    for (const e of graph.edges) drawEdge(e, allEdgeColor, 0.8, []);
   }
 
   // Layer: Kruskal MST (hijau)
@@ -82,7 +222,58 @@ function draw() {
   if (isLayerOn('dijkstra') && dijkstraRes)
     for (const e of dijkstraRes.edges) drawEdge(e, '#f87171', 3.5, []);
 
-  // Label bobot (hanya saat zoom cukup besar dan node tidak terlalu banyak)
+  // ── Node hover: highlight semua edge yang terhubung ke node ini ──
+  if (hoveredNode >= 0 && hoveredNode < graph.nodeCount) {
+
+    // 1) Gray edges (complete graph) — render DULU agar MST tampil di atasnya
+    if (isLayerOn('alledge')) {
+      const grayStroke = isLight() ? 'rgba(0,0,0,0.30)'  : 'rgba(255,255,255,0.30)';
+      const grayLabel  = isLight() ? 'rgba(0,0,0,0.45)'  : 'rgba(255,255,255,0.45)';
+      for (const edge of graph.edges) {
+        if (edge.u !== hoveredNode && edge.v !== hoveredNode) continue;
+        const na = graph.nodes[edge.u], nb = graph.nodes[edge.v];
+        const ca = toCanvas(na.x, na.y), cb = toCanvas(nb.x, nb.y);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(ca.x, ca.y); ctx.lineTo(cb.x, cb.y);
+        ctx.strokeStyle = grayStroke;
+        ctx.lineWidth   = 2 * Math.max(0.5, zoom);
+        ctx.setLineDash([]); ctx.lineCap = 'round';
+        ctx.globalAlpha = 0.75;
+        ctx.stroke();
+        ctx.restore();
+        drawWeightLabel(edge, grayLabel);
+      }
+    }
+
+    // 2) MST / Dijkstra edges — render SETELAH gray agar lebih menonjol
+    const edgeSets = [
+      kruskalRes  && isLayerOn('kruskal')  ? { edges: kruskalRes.edges,  color: '#22c55e' } : null,
+      primRes     && isLayerOn('prim')     ? { edges: primRes.edges,     color: '#38bdf8' } : null,
+      dijkstraRes && isLayerOn('dijkstra') ? { edges: dijkstraRes.edges, color: '#f87171' } : null,
+    ].filter(Boolean);
+
+    for (const set of edgeSets) {
+      for (const edge of set.edges) {
+        if (edge.u !== hoveredNode && edge.v !== hoveredNode) continue;
+        const na = graph.nodes[edge.u], nb = graph.nodes[edge.v];
+        const ca = toCanvas(na.x, na.y), cb = toCanvas(nb.x, nb.y);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(ca.x, ca.y); ctx.lineTo(cb.x, cb.y);
+        ctx.strokeStyle = set.color;
+        ctx.lineWidth   = 4 * Math.max(0.5, zoom);
+        ctx.setLineDash([]); ctx.lineCap = 'round';
+        ctx.shadowColor = set.color; ctx.shadowBlur = 14;
+        ctx.globalAlpha = 0.95;
+        ctx.stroke();
+        ctx.restore();
+        drawWeightLabel(edge, set.color);
+      }
+    }
+  }
+
+  // Label bobot standar (zoom cukup besar & node tidak terlalu banyak)
   if (isLayerOn('weights')) {
     const showWeights = zoom > 0.7 && graph.nodeCount <= 25;
     if (showWeights) {
@@ -98,6 +289,39 @@ function draw() {
   // Node
   for (let i = 0; i < graph.nodeCount; i++) drawNode(i);
 
+  // Hover: single-edge highlight (saat cursor di atas edge, bukan node)
+  if (hoveredEdge && hoveredEdge.edge.u < graph.nodeCount && hoveredEdge.edge.v < graph.nodeCount) {
+    const eu = graph.nodes[hoveredEdge.edge.u];
+    const ev = graph.nodes[hoveredEdge.edge.v];
+    const a  = toCanvas(eu.x, eu.y);
+    const b  = toCanvas(ev.x, ev.y);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = hoveredEdge.color;
+    ctx.lineWidth   = 5 * Math.max(0.5, zoom);
+    ctx.setLineDash([]); ctx.lineCap = 'round';
+    ctx.shadowColor = hoveredEdge.color; ctx.shadowBlur = 14;
+    ctx.globalAlpha = 0.85;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Hover: node ring (theme-aware)
+  if (hoveredNode >= 0 && hoveredNode < graph.nodeCount) {
+    const nd = graph.nodes[hoveredNode];
+    const { x, y } = toCanvas(nd.x, nd.y);
+    const baseR = (hoveredNode === ispIndex ? 14 : 10) * Math.max(0.5, zoom);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, baseR + 5, 0, Math.PI * 2);
+    ctx.strokeStyle = isLight() ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)';
+    ctx.lineWidth   = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   updateHints();
 }
 
@@ -107,7 +331,7 @@ function drawGrid() {
   const oy = ((panY % gridSize) + gridSize) % gridSize;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.strokeStyle = isLight() ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.04)';
   ctx.lineWidth = 1;
 
   for (let x = ox; x < canvas.width; x += gridSize) {
@@ -121,13 +345,13 @@ function drawGrid() {
 
 function drawEmptyHint() {
   ctx.save();
-  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  ctx.fillStyle = isLight() ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.07)';
   ctx.font = '16px Syne, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('Klik di sini untuk menambah node rumah', canvas.width / 2, canvas.height / 2);
+  ctx.fillText(t('canvas.hint1'), canvas.width / 2, canvas.height / 2);
   ctx.font = '12px IBM Plex Mono, monospace';
-  ctx.fillStyle = 'rgba(255,255,255,0.04)';
-  ctx.fillText('atau gunakan tombol Random di sidebar', canvas.width / 2, canvas.height / 2 + 28);
+  ctx.fillStyle = isLight() ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.04)';
+  ctx.fillText(t('canvas.hint2'), canvas.width / 2, canvas.height / 2 + 28);
   ctx.restore();
 }
 
@@ -159,7 +383,7 @@ function drawWeightLabel(edge, color) {
   // Latar belakang kecil agar label terbaca
   ctx.font = `${Math.max(9, 11 * zoom)}px IBM Plex Mono, monospace`;
   const tw = ctx.measureText(label).width;
-  ctx.fillStyle = 'rgba(13,17,23,0.75)';
+  ctx.fillStyle = isLight() ? 'rgba(240,242,245,0.92)' : 'rgba(13,17,23,0.75)';
   ctx.fillRect(mx - tw / 2 - 3, my - 8, tw + 6, 14);
 
   ctx.fillStyle = color;
@@ -181,7 +405,7 @@ function drawNode(i) {
 
   // Tentukan warna berdasarkan status
   let fillColor   = '#a78bfa';  // default: ungu
-  let strokeColor = '#0d1117';
+  let strokeColor = isLight() ? '#f0f2f5' : '#0d1117';
 
   if (isISP) {
     fillColor = '#F59E0B';
@@ -227,7 +451,7 @@ function drawNode(i) {
     const fs = Math.max(9, 10 * zoom);
     ctx.save();
     ctx.font         = `${fs}px IBM Plex Mono, monospace`;
-    ctx.fillStyle    = isISP ? '#F59E0B' : 'rgba(255,255,255,0.55)';
+    ctx.fillStyle    = isISP ? '#F59E0B' : (isLight() ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.55)');
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText(isISP ? 'ISP' : `H${i}`, x, y + r + 4);
@@ -244,6 +468,7 @@ function isLayerOn(name) {
 //  CANVAS EVENTS — Klik, Zoom, Pan
 // ============================================================
 canvas.addEventListener('click', e => {
+  if (wasDragging) { wasDragging = false; return; }
   if (isPanning) return;
   const rect = canvas.getBoundingClientRect();
   const cx   = e.clientX - rect.left;
@@ -259,15 +484,14 @@ canvas.addEventListener('click', e => {
     }
     if (nearest >= 0) {
       ispIndex = nearest;
-      showModeBar(`ISP Center dipindahkan ke Node ${nearest}`);
+      showModeBar(t('mode.ispMoved', nearest));
     } else {
-      // Tambah node baru sebagai ISP
       const id = graph.addNode(x, y);
       ispIndex  = id;
-      showModeBar(`ISP Center baru ditambahkan sebagai Node ${id}`);
+      showModeBar(t('mode.ispNew', id));
     }
     settingISP = false;
-    document.getElementById('btn-set-isp').textContent = '📡 Klik Ulang ISP Center';
+    document.getElementById('btn-set-isp').textContent = t('btn.setISP');
     updateDijkstraSelect();
     updateHeaderStats();
     draw();
@@ -279,29 +503,164 @@ canvas.addEventListener('click', e => {
   if (ispIndex < 0) ispIndex = 0;
   updateDijkstraSelect();
   updateHeaderStats();
-  showModeBar(`Node H${id} ditambahkan (${x.toFixed(0)}, ${y.toFixed(0)})`);
+  showModeBar(t('mode.nodeAdded', id, x.toFixed(0), y.toFixed(0)));
   draw();
 });
 
-// Middle-click atau Alt+click untuk pan
+// Middle-click atau Alt+click untuk pan; left-click drag pada node untuk pindahkan
 canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  const { x, y } = toWorld(cx, cy);
+
+  wasDragging = false;
+
   if (e.button === 1 || (e.button === 0 && e.altKey)) {
     isPanning = true;
     panStart  = { x: e.clientX - panX, y: e.clientY - panY };
     canvas.style.cursor = 'grab';
+    return;
+  }
+
+  // Deteksi klik pada node yang sudah ada → drag
+  if (e.button === 0 && !settingISP) {
+    let nearest = -1, minD = 22 / zoom;
+    for (let i = 0; i < graph.nodeCount; i++) {
+      const d = Math.hypot(x - graph.nodes[i].x, y - graph.nodes[i].y);
+      if (d < minD) { minD = d; nearest = i; }
+    }
+    if (nearest >= 0) {
+      draggingNode = nearest;
+      canvas.style.cursor = 'grabbing';
+    }
   }
 });
+
 canvas.addEventListener('mousemove', e => {
-  if (!isPanning) return;
-  panX = e.clientX - panStart.x;
-  panY = e.clientY - panStart.y;
-  draw();
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+
+  if (isPanning) {
+    panX = e.clientX - panStart.x;
+    panY = e.clientY - panStart.y;
+    draw();
+    return;
+  }
+
+  if (draggingNode >= 0) {
+    wasDragging = true;
+    const { x, y } = toWorld(cx, cy);
+    graph.nodes[draggingNode].x = x;
+    graph.nodes[draggingNode].y = y;
+    graph._rebuildEdges();
+    rerunActiveAlgos();
+    updateTooltip(false);
+    draw();
+    return;
+  }
+
+  // Hover detection
+  const { x, y } = toWorld(cx, cy);
+
+  let newHovNode = -1;
+  let nearDist = 22 / zoom;
+  for (let i = 0; i < graph.nodeCount; i++) {
+    const d = Math.hypot(x - graph.nodes[i].x, y - graph.nodes[i].y);
+    if (d < nearDist) { nearDist = d; newHovNode = i; }
+  }
+
+  let newHovEdge = null;
+  if (newHovNode < 0) {
+    const edgeSets = [
+      kruskalRes  && isLayerOn('kruskal')  ? { edges: kruskalRes.edges,  algo: 'Kruskal',  color: '#22c55e' } : null,
+      primRes     && isLayerOn('prim')     ? { edges: primRes.edges,     algo: 'Prim',     color: '#38bdf8' } : null,
+      dijkstraRes && isLayerOn('dijkstra') ? { edges: dijkstraRes.edges, algo: 'Dijkstra', color: '#f87171' } : null,
+    ].filter(Boolean);
+
+    const threshold = 8 / zoom;
+    let bestD = threshold;
+    for (const set of edgeSets) {
+      for (const edge of set.edges) {
+        const a = graph.nodes[edge.u], b = graph.nodes[edge.v];
+        const d = ptSegDist(x, y, a.x, a.y, b.x, b.y);
+        if (d < bestD) { bestD = d; newHovEdge = { edge, algo: set.algo, color: set.color }; }
+      }
+    }
+  }
+
+  const changed = newHovNode !== hoveredNode || newHovEdge !== hoveredEdge;
+  hoveredNode = newHovNode;
+  hoveredEdge = newHovEdge;
+
+  if (hoveredNode >= 0) {
+    const nd    = graph.nodes[hoveredNode];
+    const isISP = hoveredNode === ispIndex;
+    let c = `<strong>${isISP ? '🏢 ISP Center' : `H${hoveredNode}`}</strong><br>`;
+    c += `X: ${nd.x.toFixed(1)}m &nbsp; Y: ${nd.y.toFixed(1)}m`;
+    const d = dijkstraRes?.allDist?.[hoveredNode];
+    if (d !== undefined && d !== Infinity) {
+      c += `<br>${t('tip.ispDist')} <span style="color:#f87171">${d.toFixed(1)}m</span>`;
+    }
+    c += `<br><em style="font-size:9px;color:#8c959f">${t('tip.hint')}</em>`;
+    updateTooltip(true, c, cx, cy);
+  } else if (hoveredEdge) {
+    const e = hoveredEdge.edge;
+    let c = `<strong style="color:${hoveredEdge.color}">${hoveredEdge.algo}</strong> ${t('tip.edge')}<br>`;
+    c += `H${e.u} ↔ H${e.v}<br>`;
+    c += `<span style="color:${hoveredEdge.color}">${e.weight.toFixed(1)} m</span>`;
+    updateTooltip(true, c, cx, cy);
+  } else {
+    updateTooltip(false);
+  }
+
+  if (changed) draw();
 });
+
 canvas.addEventListener('mouseup', () => {
+  if (draggingNode >= 0) {
+    draggingNode = -1;
+    canvas.style.cursor = settingISP ? 'cell' : 'crosshair';
+    updateDijkstraSelect();
+    return;
+  }
   isPanning = false;
   canvas.style.cursor = settingISP ? 'cell' : 'crosshair';
 });
-canvas.addEventListener('mouseleave', () => { isPanning = false; });
+
+canvas.addEventListener('mouseleave', () => {
+  isPanning    = false;
+  draggingNode = -1;
+  hoveredNode  = -1;
+  hoveredEdge  = null;
+  updateTooltip(false);
+  draw();
+});
+
+// Klik-kanan node → hapus node
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  const { x, y } = toWorld(cx, cy);
+
+  let nearest = -1, minD = 25 / zoom;
+  for (let i = 0; i < graph.nodeCount; i++) {
+    const d = Math.hypot(x - graph.nodes[i].x, y - graph.nodes[i].y);
+    if (d < minD) { minD = d; nearest = i; }
+  }
+  if (nearest >= 0) {
+    const label = nearest === ispIndex ? 'ISP Center' : `H${nearest}`;
+    deleteNode(nearest);
+    hoveredNode = -1;
+    hoveredEdge = null;
+    updateTooltip(false);
+    draw();
+    showModeBar(t('mode.deleted', label));
+  }
+});
 
 // Scroll to zoom
 canvas.addEventListener('wheel', e => {
@@ -351,7 +710,7 @@ function generateRandom(n) {
   if (ispIndex < 0) ispIndex = 0;
   updateDijkstraSelect();
   updateHeaderStats();
-  showModeBar(`${n} node ditambahkan. Total: ${graph.nodeCount}`);
+  showModeBar(t('mode.random', n, graph.nodeCount));
   draw();
 }
 
@@ -366,7 +725,7 @@ function addManual() {
   document.getElementById('inp-y').value = '';
   updateDijkstraSelect();
   updateHeaderStats();
-  showModeBar(`Node H${id} ditambahkan manual (${x}, ${y})`);
+  showModeBar(t('mode.nodeManual', id, x, y));
   draw();
 }
 
@@ -382,9 +741,12 @@ function clearAll() {
     .forEach(id => document.getElementById(id).textContent = '—');
 
   document.querySelectorAll('.algo-card').forEach(b => b.classList.remove('active'));
+  hoveredNode = -1; hoveredEdge = null;
+  updateTooltip(false);
   updateDijkstraSelect();
+  updateDijkstraPath([]);
   updateHeaderStats();
-  showModeBar('Canvas dikosongkan.');
+  showModeBar(t('mode.cleared'));
   draw();
 }
 
@@ -393,7 +755,7 @@ function clearAll() {
 // ============================================================
 function runAlgo(name) {
   if (graph.nodeCount < 2) {
-    showModeBar('⚠ Perlu minimal 2 node!');
+    showModeBar(t('mode.minNodes'));
     return;
   }
 
@@ -409,9 +771,25 @@ function runAlgo(name) {
     document.getElementById('btn-prim').classList.add('active');
   } else if (name === 'dijkstra') {
     const tgt = parseInt(document.getElementById('dijkstra-target').value);
-    dijkstraRes = dijkstra(graph, start, tgt);
+
+    // Dijkstra berjalan di atas jaringan MST (bukan complete graph)
+    // agar menghasilkan rute multi-hop yang informatif
+    let mstEdges = null;
+    if (kruskalRes) mstEdges = kruskalRes.edges;
+    else if (primRes) mstEdges = primRes.edges;
+    else {
+      // Auto-run Prim jika belum ada MST
+      primRes = prim(graph, start);
+      updateResultRow('p', primRes);
+      document.getElementById('btn-prim').classList.add('active');
+      mstEdges = primRes.edges;
+      showModeBar(t('mode.primAuto'));
+    }
+
+    dijkstraRes = dijkstraOnMST(mstEdges, graph.nodes, start, tgt);
     updateResultRow('d', dijkstraRes);
     document.getElementById('btn-dijkstra').classList.add('active');
+    updateDijkstraPath(dijkstraRes.path);
   }
 
   draw();
@@ -419,7 +797,7 @@ function runAlgo(name) {
 
 function runAll() {
   if (graph.nodeCount < 2) {
-    showModeBar('⚠ Perlu minimal 2 node!');
+    showModeBar(t('mode.minNodes'));
     return;
   }
   runAlgo('kruskal');
@@ -449,14 +827,14 @@ function updateHints() {
 function updateDijkstraSelect() {
   const sel  = document.getElementById('dijkstra-target');
   const prev = sel.value;
-  sel.innerHTML = '<option value="-1">Auto (node terjauh)</option>';
+  sel.innerHTML = `<option value="-1">${t('select.auto')}</option>`;
 
   for (let i = 0; i < graph.nodeCount; i++) {
     if (i === ispIndex) continue;
     const opt   = document.createElement('option');
     opt.value   = i;
     const n     = graph.nodes[i];
-    opt.textContent = `Node H${i}  (${n.x.toFixed(0)}, ${n.y.toFixed(0)})`;
+    opt.textContent = t('select.node', i, n.x.toFixed(0), n.y.toFixed(0));
     sel.appendChild(opt);
   }
 
@@ -465,6 +843,99 @@ function updateDijkstraSelect() {
 
 function showModeBar(msg) {
   document.getElementById('mode-bar').textContent = msg;
+}
+
+// ============================================================
+//  HELPER FUNCTIONS
+// ============================================================
+
+// Jarak titik ke segmen garis (world coords) — untuk hover edge
+function ptSegDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+// Tooltip HTML overlay
+function updateTooltip(show, content = '', cx = 0, cy = 0) {
+  const tip = document.getElementById('tooltip');
+  if (!tip) return;
+  if (!show) { tip.style.display = 'none'; return; }
+  tip.innerHTML = content;
+  tip.style.display = 'block';
+  const cr = canvas.getBoundingClientRect();
+  let tx = cr.left + cx + 16;
+  let ty = cr.top  + cy - 10;
+  tip.style.left = tx + 'px';
+  tip.style.top  = ty + 'px';
+  // Clamp agar tidak keluar viewport
+  const tr = tip.getBoundingClientRect();
+  if (tr.right  > window.innerWidth  - 8) tx = cr.left + cx - tr.width  - 12;
+  if (tr.bottom > window.innerHeight - 8) ty = cr.top  + cy - tr.height + 10;
+  tip.style.left = tx + 'px';
+  tip.style.top  = ty + 'px';
+}
+
+// Fit semua node ke layar
+function fitToScreen() {
+  if (graph.nodeCount === 0) { resetView(); return; }
+  const padding = 70;
+  const xs = graph.nodes.map(n => n.x);
+  const ys = graph.nodes.map(n => n.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const rangeX = maxX - minX || 100;
+  const rangeY = maxY - minY || 100;
+  zoom = Math.min(
+    (canvas.width  - padding * 2) / rangeX,
+    (canvas.height - padding * 2) / rangeY,
+    4
+  );
+  panX = canvas.width  / 2 - ((minX + maxX) / 2) * zoom;
+  panY = canvas.height / 2 - ((minY + maxY) / 2) * zoom;
+  draw();
+}
+
+// Hapus node individual, renumber, clear results
+function deleteNode(index) {
+  graph.nodes.splice(index, 1);
+  graph.nodes.forEach((n, i) => { n.id = i; });
+  graph._rebuildEdges();
+  if (ispIndex === index)       ispIndex = graph.nodeCount > 0 ? 0 : -1;
+  else if (ispIndex > index)    ispIndex--;
+  kruskalRes = primRes = dijkstraRes = null;
+  ['r-klen','r-ktime','r-kedge','r-plen','r-ptime','r-pedge','r-dlen','r-dtime','r-dedge']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
+  document.querySelectorAll('.algo-card').forEach(b => b.classList.remove('active'));
+  updateDijkstraPath([]);
+  updateDijkstraSelect();
+  updateHeaderStats();
+}
+
+// Jalankan ulang algoritma aktif setelah drag
+function rerunActiveAlgos() {
+  const start = ispIndex >= 0 ? ispIndex : 0;
+  if (kruskalRes)  { kruskalRes  = kruskal(graph);        updateResultRow('k', kruskalRes); }
+  if (primRes)     { primRes     = prim(graph, start);    updateResultRow('p', primRes); }
+  if (dijkstraRes) {
+    const mstEdges = kruskalRes ? kruskalRes.edges : (primRes ? primRes.edges : null);
+    if (mstEdges) {
+      const prevTarget = dijkstraRes.target;
+      dijkstraRes = dijkstraOnMST(mstEdges, graph.nodes, start, prevTarget);
+      updateResultRow('d', dijkstraRes);
+      updateDijkstraPath(dijkstraRes.path);
+    }
+  }
+}
+
+// Tampilkan rute Dijkstra di sidebar
+function updateDijkstraPath(path) {
+  const el = document.getElementById('dijkstra-path-display');
+  if (!el) return;
+  if (!path || path.length === 0) { el.textContent = '—'; return; }
+  el.textContent = path.map(i => (i === ispIndex ? 'ISP' : `H${i}`)).join(' → ');
 }
 
 // ============================================================
@@ -489,13 +960,13 @@ document.getElementById('btn-set-isp').addEventListener('click', () => {
   const btn = document.getElementById('btn-set-isp');
 
   if (settingISP) {
-    btn.textContent = '✕ Batal Set ISP';
+    btn.textContent = t('btn.cancelISP');
     canvas.style.cursor = 'cell';
-    showModeBar('Klik node yang ingin dijadikan ISP Center...');
+    showModeBar(t('mode.setISP'));
   } else {
-    btn.textContent = '📡 Klik Ulang ISP Center';
+    btn.textContent = t('btn.setISP');
     canvas.style.cursor = 'crosshair';
-    showModeBar('Mode normal.');
+    showModeBar(t('mode.cancelISP'));
   }
 });
 
@@ -507,4 +978,5 @@ function redraw() { draw(); }
 // ============================================================
 //  INIT
 // ============================================================
-showModeBar('Klik canvas untuk menambah node rumah, atau gunakan tombol Random.');
+applyTheme();   // terapkan tema tersimpan (dark/light)
+applyLang();    // terapkan bahasa tersimpan + isi semua data-i18n
